@@ -3,7 +3,7 @@ from jira import JIRA, JIRAError
 import os
 import sys
 from datetime import datetime
-from jira_api import create_epic, clone_issue
+from jira_api import create_epic, clone_issue, load_teams, save_teams
 
 
 st.set_page_config(
@@ -20,6 +20,11 @@ def load_local_css(file_name):
 # CSS laden
 load_local_css("style.css")
 
+# verschiedene TeamAufgaben
+team_required = {
+    "TDCMB": ["Software: Jira", "Software: Confluence", "Software: Azure DevOps", "Software: Git", "Software: Python"],
+    "TDCME": ["Software: Jira", "Software: Confluence", "Software: Azure DevOps", "Excel-Kurs", "Einführung Intranet"],
+}
 
 logo_left, spacer, logo_right = st.columns([2, 7, 1])
 with logo_left:
@@ -78,6 +83,59 @@ st.title("Onboarding Tool")
 jira = st.session_state.jira
 PROJECT_KEY = st.session_state.PROJECT_KEY
 
+# -----------------------------------
+# Sidebar: Team-Verwaltung (Admin-Mode)
+# -----------------------------------
+st.sidebar.header("Team-Verwaltung")
+teams = load_teams()
+team_names = list(teams.keys())
+
+admin_mode = st.sidebar.checkbox("Team-Administration aktivieren")
+if admin_mode:
+    sel = st.sidebar.selectbox(
+        "Team wählen oder Neu anlegen",
+        ["<Neues Team>"] + team_names,
+        key="admin_select"
+    )
+
+    # ─── Neuen Team anlegen ─────────────────────────────
+    if sel == "<Neues Team>":
+        new_name = st.sidebar.text_input("Neuer Teamname", key="new_team")
+        new_tasks = st.sidebar.text_area("Pflichtaufgaben (eine pro Zeile)", key="new_tasks")
+        if st.sidebar.button("Team anlegen"):
+            if not new_name:
+                st.sidebar.error("Bitte gib einen Teamnamen ein.")
+            elif new_name in teams:
+                st.sidebar.error("Dieses Team existiert bereits.")
+            else:
+                teams[new_name] = [t.strip() for t in new_tasks.splitlines() if t.strip()]
+                save_teams(teams)
+                st.sidebar.success(f"Team '{new_name}' angelegt - bitte Seite neu laden.")
+                st.stop()
+
+    # ─── Bestehendes Team bearbeiten oder löschen ────────
+    else:
+        # Bearbeiten
+        edited = st.sidebar.text_area(
+            f"Pflichtaufgaben für '{sel}' (eine pro Zeile)",
+            value="\n".join(teams[sel]),
+            key="edit_tasks"
+        )
+        if st.sidebar.button("Änderungen speichern"):
+            teams[sel] = [t.strip() for t in edited.splitlines() if t.strip()]
+            save_teams(teams)
+            st.sidebar.success(f"Team '{sel}' aktualisiert - bitte Seite neu laden.")
+            st.stop()
+
+        # Löschen
+        st.sidebar.markdown("---")
+        if st.sidebar.button(f"Team '{sel}' löschen", key="delete_team"):
+            teams.pop(sel, None)
+            save_teams(teams)
+            st.sidebar.success(f"Team '{sel}' gelöscht - bitte Seite neu laden.")
+            st.stop()
+
+
 # Auswahl des Epics
 st.subheader("Wähle ein Epic zum Klonen")
 try:
@@ -94,6 +152,17 @@ if not selected or selected.startswith("--"):
     st.stop()
 
 template_key = selected.split(" - ")[0]
+
+# Lade Team-Pflichtaufgaben:
+team_required = load_teams()
+
+# --------------------------------
+# Team-Auswahl (wie vorher, nur Quelle geändert)
+team = st.selectbox("Team auswählen", ["-- wählen --"] + list(team_required.keys()))
+if team.startswith("--"):
+    st.stop()
+
+preselected_tasks = team_required.get(team, [])
 
 # Eingabefelder
 employee = st.text_input("Name des Mitarbeiters", key="emp_input")
@@ -118,9 +187,11 @@ if template_key:
         st.error(f"Fehler beim Laden der Aufgaben: {e}")
 
 # Auswahl der Aufgaben
+valid_defaults = [t for t in preselected_tasks if t in task_labels]
 selected_labels = st.multiselect(
     "Aufgaben auswählen zum Klonen",
     task_labels,
+    default=valid_defaults,
     key="task_select"
 )
 selected_tasks = [tasks[task_labels.index(lbl)] for lbl in selected_labels]
@@ -145,10 +216,7 @@ if st.button("Zurücksetzen", key="reset_button"):
     for k in ["emp_input", "start_date", "end_date", "type_sel", "tl_name", "mentor_name", "task_select", "resp_name"] + [f"assign_{i}" for i in range(len(selected_labels))]:
         st.session_state.pop(k, None)
     # Seite neu laden, falls möglich
-    if hasattr(st, "experimental_rerun"):
-        st.experimental_rerun()
-    else:
-        st.info("Bitte lade die Seite neu, um alle Eingaben zurückzusetzen.")
+    st.info("Bitte lade die Seite neu, um alle Eingaben zurückzusetzen.")
 
 # Button zum Starten
 if st.button("Onboarding starten", key="start_button"):
