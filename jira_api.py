@@ -166,9 +166,10 @@ def clone_issue(jira, src_key: str,
     # Quell-Issue inklusive gewünschter Felder laden
     src = jira.issue(
     src_key,
-    fields=f"summary,description,issuetype,{CHECKLIST_CF},attachment,comment",
+    fields=f"summary,description,issuetype,priority,{CHECKLIST_CF},attachment,comment",
     expand="attachment"
     )
+    priority = {"priority": {"id": src.fields.priority.id}} if getattr(src.fields, "priority", None) else {}
 
     # 1) neues Issue anlegen (Smart Checklist _nicht_ mitschicken → Property ist robuster)
     new_issue = jira.create_issue(fields={
@@ -176,6 +177,7 @@ def clone_issue(jira, src_key: str,
         "summary":     src.fields.summary,
         "description": src.fields.description,
         "issuetype":   {"id": src.fields.issuetype.id},
+        "priority":    {"id": src.fields.priority.id},
         "parent":      {"key": parent_epic},
         "assignee":    {"accountId": assignee_id},
         "customfield_10015": start_iso,
