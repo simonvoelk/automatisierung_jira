@@ -4,9 +4,11 @@ from io import BytesIO
 from atlassian import Confluence
 import os, tempfile, shutil, json
 from jira.exceptions import JIRAError
+import json, pathlib, streamlit as st
 
 SC_PROPERTY = "com.railsware.SmartChecklist.checklist"
 CHECKLIST_CF = "customfield_10619"
+TEAMS_FILE = pathlib.Path(__file__).with_name("teams.json")
 
 def copy_attachments(jira, src, dst):
     """
@@ -204,4 +206,12 @@ def clone_issue(jira, src_key: str,
 
     return new_issue.key
 
+def load_teams() -> dict[str, list[str]]:
+    if TEAMS_FILE.exists():
+        return json.loads(TEAMS_FILE.read_text(encoding="utf-8"))
+    # Default, falls Datei fehlt
+    return {"TDCNB": ["Setup Git-Zugang", "DB-Account anlegen"]}
 
+def save_teams(data: dict[str, list[str]]):
+    TEAMS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2),
+                          encoding="utf-8")
