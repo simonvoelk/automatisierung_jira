@@ -20,12 +20,6 @@ def load_local_css(file_name):
 # CSS laden
 load_local_css("style.css")
 
-# verschiedene TeamAufgaben
-team_required = {
-    "TDCMB": ["Software: Jira", "Software: Confluence", "Software: Azure DevOps", "Software: Git", "Software: Python"],
-    "TDCME": ["Software: Jira", "Software: Confluence", "Software: Azure DevOps", "Excel-Kurs", "Einführung Intranet"],
-}
-
 logo_left, spacer, logo_right = st.columns([2, 7, 1])
 with logo_left:
     st.image("https://iotusecase.com/wp-content/uploads/2023/08/Rolls-Royce-Power-Systems-AG-Logo.jpg", width=500)
@@ -165,7 +159,7 @@ if team.startswith("--"):
 preselected_tasks = team_required.get(team, [])
 
 # Eingabefelder
-employee = st.text_input("Name des Mitarbeiters", key="emp_input")
+new_employee = st.text_input("Name des Mitarbeiters", key="emp_input")
 start_date = st.date_input("Startdatum", key="start_date")
 end_date = st.date_input("Enddatum der Einarbeitung", key="end_date")
 emp_type = st.selectbox("Mitarbeiter-Typ", ["Intern", "Extern"], key="type_sel")
@@ -173,7 +167,7 @@ teamlead_name = st.text_input("Name des Teamleiters", key="tl_name")
 mentor_name = st.text_input("Name des Paten", key="mentor_name")
 
 # Datumsvalidierung
-if employee and end_date < start_date:
+if new_employee and end_date < start_date:
     st.error("Das Enddatum darf nicht vor dem Startdatum liegen.")
 
 # Aufgabenvorschau laden
@@ -203,8 +197,8 @@ for i, lbl in enumerate(selected_labels):
         f"Zuständigkeit für '{lbl}'", ["Teamleiter", "Pate", "Mitarbeiter"], key=f"assign_{i}"
     )
     if choice == "Mitarbeiter":
-        emp_name = st.text_input(f"Wer ist zuständig für '{lbl}'? (Name) ", key=f"resp_{i}")
-        assignment[lbl] = (choice, emp_name)
+        employee = st.text_input(f"Wer ist zuständig für '{lbl}'? (Name) ", key=f"resp_{i}")
+        assignment[lbl] = (choice, employee)
     else:
         assignment[lbl] = (choice, None)
 
@@ -220,39 +214,44 @@ if st.button("Zurücksetzen", key="reset_button"):
 
 # Button zum Starten
 if st.button("Onboarding starten", key="start_button"):
-    # Validierung
-    if not employee:
-        st.warning("Bitte gib den Namen des Mitarbeiters ein.")
-    elif not template_key:
-        st.warning("Bitte wähle einen Mitarbeitertyp aus.")
-    elif not teamlead_name or not mentor_name:
-        st.warning("Bitte gib Name von Teamleiter und Paten ein.")
-    else:
+    for task in selected_tasks:
+        lbl = task.fields.summary
+        choice, person = assignment[lbl]
+        # Validierung
+        if choice=="Mitarbeiter":
+            if not employee:
+                st.warning("Bitte gib den Namen des Mitarbeiters ein.")
+        elif not template_key:
+            st.warning("Bitte wähle einen Mitarbeitertyp aus.")
+        elif not teamlead_name or not mentor_name:
+            st.warning("Bitte gib Name von Teamleiter und Paten ein.")
+        
         start_str = start_date.isoformat()
         end_str = end_date.isoformat()
 
-    # IDs der Teamleiter, Mentoren und Mitarbeiter suchen
-    try:
-        tl_id = jira.search_users(query=teamlead_name.strip())[0].accountId
-    except Exception:
-        st.error(f"Teamleiter '{teamlead_name}' nicht gefunden.")
-        st.stop()
-    try:
-        mentor_id = jira.search_users(query=mentor_name.strip())[0].accountId
-    except Exception:
-        st.error(f"Pate '{mentor_name}' nicht gefunden.")
-        st.stop()
-    try:
-        emp_id = jira.search_users(query=employee.strip())[0].accountId
-    except Exception:
-        st.error(f"Mitarbeiter '{employee}' nicht gefunden.")
-        st.stop()
+        # IDs der Teamleiter, Mentoren und Mitarbeiter suchen
+        try:
+            tl_id = jira.search_users(query=teamlead_name.strip())[0].accountId
+        except Exception:
+            st.error(f"Teamleiter '{teamlead_name}' nicht gefunden.")
+            st.stop()
+        try:
+            mentor_id = jira.search_users(query=mentor_name.strip())[0].accountId
+        except Exception:
+            st.error(f"Pate '{mentor_name}' nicht gefunden.")
+            st.stop()
+        if choice == "Mitarbeiter":
+            try:
+                employee_id = jira.search_users(query=employee.strip())[0].accountId
+            except Exception:
+                st.error(f"Mitarbeiter '{employee}' nicht gefunden.")
+                st.stop()
 
     # Epic erstellen
     try:
         new_epic = create_epic(
             jira, PROJECT_KEY, template_key,
-            employee, start_str, end_str
+            new_employee, start_str, end_str
         )
         st.success(f"Epic erstellt: {new_epic.key}")
     except Exception as e:
@@ -273,7 +272,7 @@ if st.button("Onboarding starten", key="start_button"):
             elif choice == "Pate":
                 accountId = mentor_id
             else:
-                accountId = emp_id
+                accountId = employee_id
             try:
                 new_issue = clone_issue(
                 jira,
